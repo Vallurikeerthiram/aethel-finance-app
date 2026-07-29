@@ -6,14 +6,14 @@ import {
   PieChart as PieIcon, 
   Wallet, 
   Zap, 
-  ShieldAlert,
+  ShieldCheck,
   Clock,
   CreditCard,
   Building,
   Award,
   Layers,
-  ArrowUpRight,
-  ArrowDownRight,
+  CheckCircle2,
+  AlertTriangle,
   Send,
   Bot
 } from 'lucide-react';
@@ -76,21 +76,11 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
     }
   };
 
-  // Financial Statistics
-  const totalInvestmentValue = investments.reduce((sum, i) => sum + i.currentValue, 0);
-  const totalInvested = investments.reduce((sum, i) => sum + i.totalInvested, 0);
-  const totalGain = totalInvestmentValue - totalInvested;
+  // Aggregates: Strictly tracking how much is invested (NO RETURN % NONSENSE)
+  const totalInvestedSum = investments.reduce((sum, i) => sum + i.totalInvested, 0);
+  const monthlyInvestmentSum = investments.reduce((sum, i) => sum + (i.sipMonthlyAmount || i.totalInvested), 0);
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthlyExpenses = transactions
-    .filter(t => t.type === 'expense' && t.date.startsWith(currentMonth))
-    .reduce((sum, t) => sum + t.totalAmount, 0);
-
-  const monthlyIncome = transactions
-    .filter(t => t.type === 'income' && t.date.startsWith(currentMonth))
-    .reduce((sum, t) => sum + t.totalAmount, 0) || 85000;
-
-  // Expense Nature Breakdown
+  // Expense Nature Totals
   let perpetualSum = 0;
   let phaseBoundSum = 0; // Rent & Child Fees
   let emiSum = 0;
@@ -102,8 +92,12 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
     else if (nature === 'EMI / Debt') emiSum += t.totalAmount;
   });
 
-  const totalExpenseSum = perpetualSum + phaseBoundSum + emiSum;
-  const netWorth = totalInvestmentValue + (monthlyIncome - monthlyExpenses);
+  // Insurance monthly amortization (Annual Premium / 12)
+  const totalAnnualInsurance = policies.reduce((sum, p) => sum + p.annualPremium, 0);
+  const monthlyInsurance = Math.round(totalAnnualInsurance / 12);
+  const totalFixedAndInsurance = perpetualSum + monthlyInsurance;
+
+  const isDoingGreat = monthlyInvestmentSum >= totalFixedAndInsurance;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -115,10 +109,10 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
               <Sparkles size={20} color="#8b5cf6" />
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#a78bfa', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                On-Device AI Financial Manager
+                Financial Manager Engine
               </span>
             </div>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: 800 }}>Wealth & Financial Manager Command</h1>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 800 }}>Investments vs Fixed Expenses Manager</h1>
           </div>
 
           <button className="btn-primary" onClick={onNavigateEntry}>
@@ -128,33 +122,31 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
         </div>
       </div>
 
-      {/* Metric Summary Cards Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+      {/* Metric Cards Grid: No Return Nonsense */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '16px' }}>
         
-        {/* Net Worth */}
-        <div className="glass-card" style={{ padding: '20px' }}>
+        {/* Monthly Investment */}
+        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #38bdf8' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>ESTIMATED NET WORTH</span>
-            <Wallet size={18} color="#8b5cf6" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>MONTHLY INVESTING</span>
+            <PieIcon size={18} color="#38bdf8" />
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#f8fafc', marginBottom: '4px' }}>
-            {currency}{netWorth.toLocaleString()}
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#38bdf8', marginBottom: '4px' }}>
+            {currency}{monthlyInvestmentSum.toLocaleString()}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#34d399' }}>Investments + Cash Liquid</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Total Invested: {currency}{totalInvestedSum.toLocaleString()}</div>
         </div>
 
-        {/* Investment Portfolio */}
-        <div className="glass-card" style={{ padding: '20px' }}>
+        {/* Fixed Expenses + Insurance Amortization */}
+        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #10b981' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>PORTFOLIO VALUE</span>
-            <PieIcon size={18} color="#f59e0b" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>FIXED + INSURANCE / MONTH</span>
+            <ShieldCheck size={18} color="#10b981" />
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#fbbf24', marginBottom: '4px' }}>
-            {currency}{totalInvestmentValue.toLocaleString()}
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#34d399', marginBottom: '4px' }}>
+            {currency}{totalFixedAndInsurance.toLocaleString()}
           </div>
-          <div style={{ fontSize: '0.75rem', color: totalGain >= 0 ? '#34d399' : '#fb7185' }}>
-            {totalGain >= 0 ? '+' : ''}{currency}{totalGain.toLocaleString()} ({totalInvested > 0 ? ((totalGain / totalInvested) * 100).toFixed(1) : 0}%)
-          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Fixed Lifestyle ({currency}{perpetualSum}) + Insurance ({currency}{monthlyInsurance}/mo)</div>
         </div>
 
         {/* Personal Inflation */}
@@ -166,24 +158,81 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#fb7185', marginBottom: '4px' }}>
             {inflationData ? `${inflationData.personalInflationPercent}%` : 'Calculating...'}
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Market CPI: {settings.marketCPIBenchmarkPercent}%</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Market CPI Baseline: {settings.marketCPIBenchmarkPercent}%</div>
         </div>
 
-        {/* Step-Up Target */}
-        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #10b981' }}>
+        {/* Recommended Step-Up Target */}
+        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #f59e0b' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>RECOMMENDED STEP-UP</span>
-            <TrendingUp size={18} color="#10b981" />
+            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>NEXT-YEAR STEP-UP</span>
+            <TrendingUp size={18} color="#f59e0b" />
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#34d399', marginBottom: '4px' }}>
-            {stepUpData ? `+${stepUpData.recommendedStepUpPercent}%` : '+15%'}
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#fbbf24', marginBottom: '4px' }}>
+            +{stepUpData ? stepUpData.recommendedStepUpPercent : 15}%
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Target Monthly: {currency}{stepUpData?.recommendedNextMonthlyInvestment.toLocaleString()}</div>
         </div>
 
       </div>
 
-      {/* Structural Expense Nature Analysis (Perpetual vs Phase-Bound Rent/Child Fees vs EMI) */}
+      {/* Visual Chart: Monthly Investments vs Fixed Expenses + Insurance */}
+      <div className="glass-card" style={{ padding: '24px' }}>
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <TrendingUp size={20} color="#38bdf8" />
+          <span>Monthly Investments vs Fixed & Insurance Growth</span>
+        </h3>
+
+        {/* SVG Graphic Comparison Chart */}
+        <div style={{ padding: '20px', background: 'var(--bg-surface-elevated)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-glass)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '12px', fontWeight: 600 }}>
+            <div style={{ color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#38bdf8', display: 'inline-block' }}></span>
+              <span>Monthly Investment Contribution: {currency}{monthlyInvestmentSum.toLocaleString()}/mo</span>
+            </div>
+            <div style={{ color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#34d399', display: 'inline-block' }}></span>
+              <span>Fixed Costs + Insurance Amortization: {currency}{totalFixedAndInsurance.toLocaleString()}/mo</span>
+            </div>
+          </div>
+
+          {/* Simple Visual Bar Comparison */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', margin: '16px 0' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                <span>Investments Contribution</span>
+                <span>{currency}{monthlyInvestmentSum.toLocaleString()}</span>
+              </div>
+              <div style={{ height: '14px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '7px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.min((monthlyInvestmentSum / Math.max(monthlyInvestmentSum + totalFixedAndInsurance, 1)) * 100, 100)}%`,
+                  background: 'linear-gradient(90deg, #38bdf8 0%, #6366f1 100%)',
+                  borderRadius: '7px',
+                  transition: 'width 0.5s'
+                }}></div>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                <span>Fixed Lifestyle + Insurance (Annual ÷ 12)</span>
+                <span>{currency}{totalFixedAndInsurance.toLocaleString()}</span>
+              </div>
+              <div style={{ height: '14px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '7px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${Math.min((totalFixedAndInsurance / Math.max(monthlyInvestmentSum + totalFixedAndInsurance, 1)) * 100, 100)}%`,
+                  background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                  borderRadius: '7px',
+                  transition: 'width 0.5s'
+                }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Structural Expense Nature Breakdown */}
       <div className="glass-card" style={{ padding: '24px' }}>
         <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Layers size={20} color="#8b5cf6" />
@@ -242,33 +291,30 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
           <Award size={24} color="#a78bfa" />
           <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc' }}>
-            AI Financial Manager Report & Wealth Advice
+            AI Financial Manager Verdict & Step-Up Advice
           </h2>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>
           <p>
-            You are earning an estimated <strong>{currency}{stepUpData?.currentAnnualIncome.toLocaleString()}/yr</strong>. Your total monthly outflow is <strong>{currency}{totalExpenseSum.toLocaleString()}</strong>, composed of:
+            You are investing <strong>{currency}{monthlyInvestmentSum.toLocaleString()}/month</strong>. Your total fixed lifestyle expenses are <strong>{currency}{perpetualSum.toLocaleString()}/month</strong> and annual insurance commitments are <strong>{currency}{totalAnnualInsurance.toLocaleString()}</strong> ({currency}{monthlyInsurance}/month amortized).
           </p>
-          <ul style={{ paddingLeft: '20px' }}>
-            <li>🔄 <strong>Perpetual Food & Lifestyle</strong>: <strong>{currency}{perpetualSum.toLocaleString()}</strong> (Subject to your <strong>{inflationData?.personalInflationPercent}% personal inflation rate</strong>).</li>
-            <li>⏳ <strong>Phase-Bound Temporary (Rent & Child Fees)</strong>: <strong>{currency}{phaseBoundSum.toLocaleString()}</strong> (<em>Financial Manager Note: Rent & Child Fees will completely vanish post-retirement or when moving to your village home!</em>).</li>
-            <li>💳 <strong>EMI & Loans</strong>: <strong>{currency}{emiSum.toLocaleString()}</strong>.</li>
-          </ul>
 
           <div style={{
-            padding: '16px',
-            background: 'rgba(16, 185, 129, 0.15)',
-            border: '1px solid rgba(16, 185, 129, 0.4)',
+            padding: '18px',
+            background: isDoingGreat ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+            border: `1px solid ${isDoingGreat ? 'rgba(16, 185, 129, 0.4)' : 'rgba(244, 63, 94, 0.4)'}`,
             borderRadius: 'var(--radius-md)',
-            color: '#f8fafc',
-            marginTop: '6px'
+            color: '#f8fafc'
           }}>
-            <div style={{ fontSize: '0.85rem', color: '#34d399', fontWeight: 700, marginBottom: '4px' }}>
-              🎯 ADVISOR ACTION PLAN
+            <div style={{ fontSize: '0.9rem', color: isDoingGreat ? '#34d399' : '#fb7185', fontWeight: 800, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {isDoingGreat ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+              <span>{isDoingGreat ? 'EXCELLENT FINANCIAL DISCIPLINE' : 'STEP-UP RECOMMENDED'}</span>
             </div>
             <div>
-              Step up your monthly investment SIP by <strong>+{stepUpData?.recommendedStepUpPercent}%</strong> (Target: <strong>{currency}{stepUpData?.recommendedNextMonthlyInvestment.toLocaleString()}/mo</strong>) next year. This counters your personal inflation rate and will create an extra <strong>+{currency}{stepUpData?.wealthBoost5Y.toLocaleString()}</strong> in 5-year compounding wealth!
+              {isDoingGreat 
+                ? `You are doing great! Your monthly investment contributions (${currency}${monthlyInvestmentSum.toLocaleString()}) exceed your total fixed lifestyle & insurance costs (${currency}${totalFixedAndInsurance.toLocaleString()}). Step up your monthly investments by +${stepUpData?.recommendedStepUpPercent}% (Target: ${currency}${stepUpData?.recommendedNextMonthlyInvestment.toLocaleString()}/mo) next year to stay ahead of your ${inflationData?.personalInflationPercent}% personal inflation rate!`
+                : `Your fixed expenses inflated by ${inflationData?.personalInflationPercent}%. To outpace your fixed obligations (${currency}${totalFixedAndInsurance.toLocaleString()}), step up your monthly investments to ${currency}${stepUpData?.recommendedNextMonthlyInvestment.toLocaleString()} next year.`}
             </div>
           </div>
         </div>
@@ -285,7 +331,7 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
           <input
             type="text"
             className="form-input"
-            placeholder="Ask AI e.g. 'Analyze my rent vs food expenses' or 'Why increase my SIP by 15%?'"
+            placeholder="Ask AI e.g. 'Compare my investments vs fixed costs' or 'How much is my monthly insurance commitment?'"
             value={aiQueryInput}
             onChange={(e) => setAiQueryInput(e.target.value)}
             style={{ flex: 1 }}

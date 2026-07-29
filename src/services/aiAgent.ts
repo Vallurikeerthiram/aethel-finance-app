@@ -24,16 +24,13 @@ export function parseNaturalLanguageLog(input: string): ParsedQuickExpense {
   const text = input.trim();
   const lower = text.toLowerCase();
 
-  // Extract amount ($123, ₹123, 123 USD, 123$)
   const amountMatch = text.match(/(?:[\$₹€£]|\bUSD|\bINR)?\s*(\d+(?:\.\d{1,2})?)\s*(?:[\$₹€£]|\bUSD|\bINR)?/i);
   const totalAmount = amountMatch ? parseFloat(amountMatch[1]) : 0;
 
-  // Infer quantity and units (500g, 2kg, 3 liters, 5 packs, 2x)
   const qtyMatch = text.match(/(\d+(?:\.\d{1,2})?)\s*(g|kg|gram|grams|liter|litres|l|ml|pack|packs|box|units|month|x)\b/i);
   let quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
   let quantityUnit = qtyMatch ? qtyMatch[2].toLowerCase() : 'unit';
 
-  // Infer Bank / Credit Card
   let bankCreditCard = 'HDFC Bank Account';
   if (lower.includes('hdfc regalia') || lower.includes('hdfc card')) bankCreditCard = 'HDFC Regalia Credit Card';
   else if (lower.includes('icici card') || lower.includes('amazon pay')) bankCreditCard = 'ICICI Amazon Pay Credit Card';
@@ -43,7 +40,6 @@ export function parseNaturalLanguageLog(input: string): ParsedQuickExpense {
   else if (lower.includes('upi') || lower.includes('gpay') || lower.includes('phonepe')) bankCreditCard = 'UPI / GPay / PhonePe';
   else if (lower.includes('cash')) bankCreditCard = 'Cash';
 
-  // Infer City / Location
   let cityLocation = undefined;
   const cityMatch = text.match(/(?:in|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/);
   if (cityMatch && !['Walmart', 'Costco', 'Target', 'Starbucks', 'Amazon'].includes(cityMatch[1])) {
@@ -53,20 +49,18 @@ export function parseNaturalLanguageLog(input: string): ParsedQuickExpense {
   else if (lower.includes('mumbai')) cityLocation = 'Mumbai';
   else if (lower.includes('village')) cityLocation = 'Village Home';
 
-  // Infer Store / Merchant
   const storeMatch = text.match(/(?:from|at|@)\s+([A-Za-z0-9\s]+?)(?:\s+(?:for|costing|paid|via|\$|₹|in)|$)/i);
   const storeMerchant = storeMatch ? storeMatch[1].trim() : undefined;
 
-  // Infer Category & Expense Nature
   let category: ExpenseCategory = 'Groceries & Food';
   let expenseNature: ExpenseNature = 'Perpetual Lifestyle';
 
   if (lower.includes('rent') || lower.includes('lease')) {
     category = 'Rent & Lease';
-    expenseNature = 'Phase-Bound Temporary'; // Will drop off when moving to village home
+    expenseNature = 'Phase-Bound Temporary';
   } else if (lower.includes('child') || lower.includes('school') || lower.includes('tuition') || lower.includes('college fee')) {
     category = 'Child Fees & Schooling';
-    expenseNature = 'Phase-Bound Temporary'; // Will drop off post retirement / school completion
+    expenseNature = 'Phase-Bound Temporary';
   } else if (lower.includes('emi') || lower.includes('loan') || lower.includes('car emi') || lower.includes('home loan') || lower.includes('mobile emi')) {
     category = 'EMIs & Loans';
     expenseNature = 'EMI / Debt';
@@ -90,7 +84,6 @@ export function parseNaturalLanguageLog(input: string): ParsedQuickExpense {
     expenseNature = 'Perpetual Lifestyle';
   }
 
-  // Clean item name
   let itemName = text
     .replace(/(?:[\$₹€£]|\bUSD|\bINR)?\s*(\d+(?:\.\d{1,2})?)/gi, '')
     .replace(/(?:via|from|at|@|in)\s+[A-Za-z0-9\s]+/gi, '')
@@ -121,12 +114,11 @@ export function parseNaturalLanguageLog(input: string): ParsedQuickExpense {
 }
 
 /**
- * On-Device Financial Advisor AI Core with Fixed vs Phase-Bound Analysis
+ * On-Device Financial Advisor AI Core focused strictly on Investments vs Fixed Expenses + Insurance
  */
 export async function queryAiAdvisor(userQuery: string): Promise<string> {
   const settings = await getOrInitSettings();
 
-  // Gemini Cloud Fallback if API key present
   if (settings.geminiApiKey && settings.geminiApiKey.trim().length > 10) {
     try {
       const cloudResponse = await queryGeminiCloud(userQuery, settings.geminiApiKey);
@@ -136,7 +128,6 @@ export async function queryAiAdvisor(userQuery: string): Promise<string> {
     }
   }
 
-  // On-Device Intelligence Engine
   const transactions = await db.transactions.toArray();
   const investments = await db.investments.toArray();
   const insurancePolicies = await db.insurancePolicies.toArray();
@@ -146,71 +137,41 @@ export async function queryAiAdvisor(userQuery: string): Promise<string> {
 
   const symbol = settings.currencySymbol;
 
-  // Breakdown by Expense Nature
   let perpetualSum = 0;
-  let phaseBoundSum = 0; // Rent & Child Fees
+  let phaseBoundSum = 0;
   let emiSum = 0;
-  
-  const bankCardSum: Record<string, number> = {};
-  const citySum: Record<string, number> = {};
 
   transactions.filter(t => t.type === 'expense').forEach(t => {
     const nature = t.expenseNature || 'Perpetual Lifestyle';
     if (nature === 'Perpetual Lifestyle') perpetualSum += t.totalAmount;
     else if (nature === 'Phase-Bound Temporary') phaseBoundSum += t.totalAmount;
     else if (nature === 'EMI / Debt') emiSum += t.totalAmount;
-
-    if (t.bankCreditCard) {
-      bankCardSum[t.bankCreditCard] = (bankCardSum[t.bankCreditCard] || 0) + t.totalAmount;
-    }
-    if (t.cityLocation) {
-      citySum[t.cityLocation] = (citySum[t.cityLocation] || 0) + t.totalAmount;
-    }
   });
 
-  const totalExpenseSum = perpetualSum + phaseBoundSum + emiSum;
-  const totalInvestmentSum = investments.reduce((sum, i) => sum + i.currentValue, 0);
-  const monthlySipSum = investments.reduce((sum, i) => sum + (i.sipMonthlyAmount || 0), 0);
+  const totalAnnualInsurance = insurancePolicies.reduce((sum, p) => sum + p.annualPremium, 0);
+  const monthlyInsurance = Math.round(totalAnnualInsurance / 12);
 
-  const lowerQuery = userQuery.toLowerCase();
+  const monthlyFixedAndInsurance = perpetualSum + monthlyInsurance;
+  const monthlyInvestmentSum = investments.reduce((sum, i) => sum + (i.sipMonthlyAmount || i.totalInvested), 0);
 
-  if (lowerQuery.includes('nature') || lowerQuery.includes('fixed') || lowerQuery.includes('rent') || lowerQuery.includes('child fee') || lowerQuery.includes('temporary') || lowerQuery.includes('perpetual')) {
-    return `🏛️ **Expense Nature & Structural Analysis**:
+  const isDoingGreat = monthlyInvestmentSum >= monthlyFixedAndInsurance;
 
-1. 🔄 **Perpetual Lifestyle Expenses** (Food, Utilities, Dining, Health):
-   - Total: **${symbol}${perpetualSum.toLocaleString()}** (${((perpetualSum / Math.max(totalExpenseSum, 1)) * 100).toFixed(1)}%)
-   - *Insight*: These costs continue for life and will inflate at your **${inflationData.personalInflationPercent}% personal inflation rate**.
+  return `📊 **Financial Manager Executive Advisor Report**:
 
-2. ⏳ **Phase-Bound / Temporary Expenses** (Rent, Child School Fees):
-   - Total: **${symbol}${phaseBoundSum.toLocaleString()}** (${((phaseBoundSum / Math.max(totalExpenseSum, 1)) * 100).toFixed(1)}%)
-   - *Financial Advisor Note*: **These are NOT permanent!** When you move to your village home or post-retirement when children complete school, this ${symbol}${phaseBoundSum.toLocaleString()} monthly cash drain disappears entirely!
+💰 **Monthly Investments vs Fixed & Insurance Commitments**:
+- **Monthly Investments Contribution**: **${symbol}${monthlyInvestmentSum.toLocaleString()}**
+- **Monthly Fixed Lifestyle Expenses**: **${symbol}${perpetualSum.toLocaleString()}**
+- **Monthly Insurance Premium Amortization** (${insurancePolicies.length} policies): **${symbol}${monthlyInsurance.toLocaleString()}** (Total Annual: ${symbol}${totalAnnualInsurance.toLocaleString()})
+- **Total Fixed Obligations (Fixed + Insurance)**: **${symbol}${monthlyFixedAndInsurance.toLocaleString()}**
+- **Phase-Bound Temporary Costs (Rent & Child Fees)**: **${symbol}${phaseBoundSum.toLocaleString()}** *(Disappears when moving to village home or post-retirement)*
 
-3. 💳 **EMI & Debt Servicing**:
-   - Total: **${symbol}${emiSum.toLocaleString()}** (${((emiSum / Math.max(totalExpenseSum, 1)) * 100).toFixed(1)}%)
-   - *Insight*: EMIs end after tenure completion, unlocking additional monthly cashflow for investment step-ups!`;
-  }
+🔥 **Personal Inflation Growth Impact**:
+- Your fixed perpetual expenses & items are inflating at **${inflationData.personalInflationPercent}%** per year.
 
-  // General Comprehensive Advisor Report
-  return `📊 **Executive Financial Advisor Master Report**:
-
-💰 **Income vs Spending vs Investment Cashflow**:
-- **Estimated Annual Income**: **${symbol}${stepUpData.currentAnnualIncome.toLocaleString()}**
-- **Monthly Expenses Total**: **${symbol}${totalExpenseSum.toLocaleString()}**
-  - 🔄 **Perpetual Expenses (Food/Lifestyle)**: **${symbol}${perpetualSum.toLocaleString()}**
-  - ⏳ **Phase-Bound (Rent/Child Fees)**: **${symbol}${phaseBoundSum.toLocaleString()}** *(Disappears post-retirement/village move)*
-  - 💳 **EMIs & Debt Servicing**: **${symbol}${emiSum.toLocaleString()}**
-- **Monthly Investment SIP Contribution**: **${symbol}${monthlySipSum.toLocaleString()}**
-- **Total Investment Portfolio Value**: **${symbol}${totalInvestmentSum.toLocaleString()}** (${investments.length} assets tracked)
-
-🔥 **Personalized Inflation Audit**:
-- **Your Personal Inflation Rate**: **${inflationData.personalInflationPercent}%** (Market CPI Benchmark: ${settings.marketCPIBenchmarkPercent}%)
-- **Primary Cost Increases**: ${inflationData.highestPriceHikes.slice(0, 2).map(h => `${h.itemName} (+${h.changePercent}%)`).join(', ') || 'Groceries & Fuel'}
-
-🎯 **Financial Manager Advisor Recommendation**:
-- *"Your Phase-Bound expenses (Rent & Child Fees) totaling **${symbol}${phaseBoundSum.toLocaleString()}** will naturally drop off over your retirement horizon. However, to offset your **${inflationData.personalInflationPercent}% personal inflation rate** on Perpetual expenses, **increase your monthly investment SIP by +${stepUpData.recommendedStepUpPercent}%** (Target: ${symbol}${stepUpData.recommendedNextMonthlyInvestment.toLocaleString()}/mo) next year!"*
-
-💳 **Top Payment Methods / Banks Used**:
-${Object.entries(bankCardSum).slice(0, 3).map(([bank, amt]) => `- **${bank}**: ${symbol}${amt.toLocaleString()}`).join('\n') || '- Log transactions with bank/card details to see instrument breakdown.'}`;
+📢 **Financial Advisor Verdict**:
+${isDoingGreat 
+  ? `✅ **EXCELLENT FINANCIAL DISCIPLINE!** Your monthly investment contribution (${symbol}${monthlyInvestmentSum.toLocaleString()}) exceeds your total fixed lifestyle & insurance commitments (${symbol}${monthlyFixedAndInsurance.toLocaleString()}). Keep stepping up your investments by +${stepUpData.recommendedStepUpPercent}% annually to stay ahead of inflation!` 
+  : `⚠️ **STEP-UP RECOMMENDED!** Your fixed expenses inflated by ${inflationData.personalInflationPercent}%. To outpace your fixed obligations (${symbol}${monthlyFixedAndInsurance.toLocaleString()}), step up your monthly investments to **${symbol}${stepUpData.recommendedNextMonthlyInvestment.toLocaleString()}** next year.`}`;
 }
 
 async function queryGeminiCloud(userQuery: string, apiKey: string): Promise<string | null> {
@@ -218,7 +179,7 @@ async function queryGeminiCloud(userQuery: string, apiKey: string): Promise<stri
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: `Act as a senior personal financial advisor. User Query: "${userQuery}". Give concise markdown financial advice.` }] }]
+      contents: [{ parts: [{ text: `Act as a personal financial manager. User Query: "${userQuery}". Give concise markdown advice on investments vs fixed expenses.` }] }]
     })
   });
 
