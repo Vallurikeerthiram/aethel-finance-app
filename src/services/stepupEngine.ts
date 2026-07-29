@@ -16,7 +16,6 @@ export interface StepUpRecommendationResult {
   recommendedNextMonthlyInvestment: number;
   additionalMonthlyInvestmentNeeded: number;
   
-  // Projections
   projectionWithoutStepUp5Y: number;
   projectionWithStepUp5Y: number;
   wealthBoost5Y: number;
@@ -27,17 +26,20 @@ export interface StepUpRecommendationResult {
 
   lifestyleCreepAlert: string | null;
   actionableInsights: string[];
+  hasHistory: boolean;
 }
 
 export async function calculateStepUpPlan(
   userIncome?: number,
   expectedSalaryHike: number = 8.0,
   targetSavingsRate: number = 30.0,
-  personalInflationPct: number = 7.0,
+  personalInflationPct: number = 0.0,
   userStepUpOverride?: number
 ): Promise<StepUpRecommendationResult> {
   const transactions = await db.transactions.toArray();
   const investments = await db.investments.toArray();
+
+  const hasHistory = transactions.length > 0 || investments.length > 0;
 
   const now = new Date();
   const threeMonthsAgo = new Date(now.getTime() - 90 * 24 * 3600 * 1000);
@@ -62,39 +64,45 @@ export async function calculateStepUpPlan(
     }
   });
 
-  const monthlyExpenses = recentExpenseSum > 0 ? Math.round(recentExpenseSum / 3) : 45000;
-  const perpetualMonthlyExpenses = perpetualSum > 0 ? Math.round(perpetualSum / 3) : 25000;
-  const phaseBoundMonthlyExpenses = phaseBoundSum > 0 ? Math.round(phaseBoundSum / 3) : 15000;
-  const emiMonthlyExpenses = emiSum > 0 ? Math.round(emiSum / 3) : 5000;
+  const monthlyExpenses = recentExpenseSum > 0 ? Number((recentExpenseSum / 3).toFixed(2)) : 0;
+  const perpetualMonthlyExpenses = perpetualSum > 0 ? Number((perpetualSum / 3).toFixed(2)) : 0;
+  const phaseBoundMonthlyExpenses = phaseBoundSum > 0 ? Number((phaseBoundSum / 3).toFixed(2)) : 0;
+  const emiMonthlyExpenses = emiSum > 0 ? Number((emiSum / 3).toFixed(2)) : 0;
 
   const monthlyIncome = userIncome 
-    ? Math.round(userIncome / 12) 
-    : (recentIncomeSum > 0 ? Math.round(recentIncomeSum / 3) : 85000);
+    ? Number((userIncome / 12).toFixed(2)) 
+    : (recentIncomeSum > 0 ? Number((recentIncomeSum / 3).toFixed(2)) : 0);
   
   const annualIncome = monthlyIncome * 12;
 
-  let currentMonthlyInvestment = investments.reduce((acc, inv) => acc + (inv.sipMonthlyAmount || 0), 0);
-  if (currentMonthlyInvestment === 0) {
-    currentMonthlyInvestment = Math.max(monthlyIncome - monthlyExpenses, 15000);
-  }
+  let currentMonthlyInvestment = investments.reduce((acc, inv) => acc + (inv.sipMonthlyAmount || inv.totalInvested || 0), 0);
 
-  const currentSavingsRate = Number(((currentMonthlyInvestment / monthlyIncome) * 100).toFixed(1));
+  const currentSavingsRate = monthlyIncome > 0 
+    ? Number(((currentMonthlyInvestment / monthlyIncome) * 100).toFixed(2))
+    : 0;
 
-  let recommendedStepUpPct = personalInflationPct + (expectedSalaryHike * 0.4);
-  if (currentSavingsRate < targetSavingsRate) {
-    recommendedStepUpPct += (targetSavingsRate - currentSavingsRate) * 0.4;
+  // Step-Up Calculation: ONLY calculated if user has income / investment data
+  let recommendedStepUpPct = 0;
+  if (hasHistory && (currentMonthlyInvestment > 0 || monthlyIncome > 0)) {
+    recommendedStepUpPct = personalInflationPct + (expectedSalaryHike * 0.4);
+    if (currentSavingsRate > 0 && currentSavingsRate < targetSavingsRate) {
+      recommendedStepUpPct += (targetSavingsRate - currentSavingsRate) * 0.4;
+    }
+    recommendedStepUpPct = Math.min(Math.max(Number(recommendedStepUpPct.toFixed(2)), 0.0), 35.0);
   }
-  
-  recommendedStepUpPct = Math.min(Math.max(Number(recommendedStepUpPct.toFixed(1)), 5.0), 35.0);
 
   const activeStepUpPct = userStepUpOverride !== undefined ? userStepUpOverride : recommendedStepUpPct;
-  const recommendedNextMonthlyInvestment = Math.round(currentMonthlyInvestment * (1 + activeStepUpPct / 100));
-  const additionalMonthlyNeeded = recommendedNextMonthlyInvestment - currentMonthlyInvestment;
+  const recommendedNextMonthlyInvestment = currentMonthlyInvestment > 0 
+    ? Number((currentMonthlyInvestment * (1 + activeStepUpPct / 100)).toFixed(2))
+    : 0;
+  
+  const additionalMonthlyNeeded = Number((recommendedNextMonthlyInvestment - currentMonthlyInvestment).toFixed(2));
 
   const annualReturnRate = 0.12;
 
   const calculateWealth = (initialMonthly: number, stepUpAnnualPct: number, years: number) => {
-    let totalPortfolio = investments.reduce((acc, inv) => acc + (inv.currentValue || 0), 0);
+    if (initialMonthly === 0) return 0;
+    let totalPortfolio = investments.reduce((acc, inv) => acc + (inv.totalInvested || 0), 0);
     let monthlyInvest = initialMonthly;
 
     for (let yr = 1; yr <= years; yr++) {
@@ -103,26 +111,28 @@ export async function calculateStepUpPlan(
       }
       monthlyInvest = monthlyInvest * (1 + stepUpAnnualPct / 100);
     }
-    return Math.round(totalPortfolio);
+    return Number(totalPortfolio.toFixed(2));
   };
 
   const projectionWithoutStepUp5Y = calculateWealth(currentMonthlyInvestment, 0, 5);
   const projectionWithStepUp5Y = calculateWealth(currentMonthlyInvestment, activeStepUpPct, 5);
-  const wealthBoost5Y = projectionWithStepUp5Y - projectionWithoutStepUp5Y;
+  const wealthBoost5Y = Number((projectionWithStepUp5Y - projectionWithoutStepUp5Y).toFixed(2));
 
   const projectionWithoutStepUp10Y = calculateWealth(currentMonthlyInvestment, 0, 10);
   const projectionWithStepUp10Y = calculateWealth(currentMonthlyInvestment, activeStepUpPct, 10);
-  const wealthBoost10Y = projectionWithStepUp10Y - projectionWithoutStepUp10Y;
+  const wealthBoost10Y = Number((projectionWithStepUp10Y - projectionWithoutStepUp10Y).toFixed(2));
 
   let lifestyleCreepAlert: string | null = null;
-  if (personalInflationPct > expectedSalaryHike) {
-    lifestyleCreepAlert = `WARNING: Personal inflation (${personalInflationPct}%) is higher than your expected salary hike (${expectedSalaryHike}%). Step up your investments to preserve purchasing power!`;
+  if (hasHistory && personalInflationPct > expectedSalaryHike) {
+    lifestyleCreepAlert = `WARNING: Personal inflation (${personalInflationPct.toFixed(2)}%) is higher than expected salary hike (${expectedSalaryHike.toFixed(2)}%). Step up investments to preserve purchasing power!`;
   }
 
-  const insights: string[] = [
-    `Your Phase-Bound expenses (Rent & Child Fees) total $${phaseBoundMonthlyExpenses.toLocaleString()}/mo. These disappear post-retirement/village move!`,
-    `Increasing your monthly investment by ${activeStepUpPct}% (+$${additionalMonthlyNeeded.toLocaleString()}/mo) adds $${wealthBoost5Y.toLocaleString()} to your 5-year net worth!`,
-    `Personal inflation at ${personalInflationPct}% requires your investments to step up by at least ${Math.ceil(personalInflationPct)}% annually.`
+  const insights: string[] = hasHistory ? [
+    `Phase-Bound expenses (Rent & Child Fees) total $${phaseBoundMonthlyExpenses.toLocaleString()}/mo. These disappear post-retirement/village move!`,
+    `Increasing monthly investment by ${activeStepUpPct.toFixed(2)}% (+$${additionalMonthlyNeeded.toLocaleString()}/mo) adds $${wealthBoost5Y.toLocaleString()} to 5-year wealth!`,
+    `Personal inflation at ${personalInflationPct.toFixed(2)}% requires annual step-ups to prevent purchasing power degradation.`
+  ] : [
+    'Log your monthly income, investments, and expenses in the Vault tab to activate personalized wealth projections.'
   ];
 
   const planConfig: StepUpPlanConfig = {
@@ -133,9 +143,9 @@ export async function calculateStepUpPlan(
     perpetualMonthlyExpenses,
     phaseBoundMonthlyExpenses,
     emiMonthlyExpenses,
-    currentMonthlyInvestment: currentMonthlyInvestment,
+    currentMonthlyInvestment,
     targetSavingsRatePercent: targetSavingsRate,
-    recommendedStepUpPercent: recommendedStepUpPct,
+    recommendedStepUpPercent: activeStepUpPct,
     userSetStepUpPercent: activeStepUpPct,
     nextYearMonthlyInvestment: recommendedNextMonthlyInvestment,
     projected5YearNetWorth: projectionWithStepUp5Y,
@@ -156,7 +166,7 @@ export async function calculateStepUpPlan(
     currentSavingsRatePercent: currentSavingsRate,
     personalInflationPercent: personalInflationPct,
     expectedSalaryHikePercent: expectedSalaryHike,
-    recommendedStepUpPercent: recommendedStepUpPct,
+    recommendedStepUpPercent: Number(activeStepUpPct.toFixed(2)),
     recommendedNextMonthlyInvestment,
     additionalMonthlyInvestmentNeeded: additionalMonthlyNeeded,
     projectionWithoutStepUp5Y,
@@ -166,6 +176,7 @@ export async function calculateStepUpPlan(
     projectionWithStepUp10Y,
     wealthBoost10Y,
     lifestyleCreepAlert,
-    actionableInsights: insights
+    actionableInsights: insights,
+    hasHistory
   };
 }

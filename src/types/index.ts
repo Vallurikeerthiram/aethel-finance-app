@@ -129,6 +129,7 @@ export interface UserSettings {
   isSecurityEnabled: boolean;
   pinHash?: string;
   salt?: string;
+  passkeyCredentialId?: string;
   autoLockMinutes: number;
   marketCPIBenchmarkPercent: number;
   customCategories: string[];

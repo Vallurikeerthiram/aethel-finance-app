@@ -16,6 +16,7 @@ import {
 import { UserSettings } from '../types';
 import { saveSettings } from '../services/db';
 import { hashPin, generateSalt } from '../services/crypto';
+import { registerBiometricPasskey, isWebAuthnSupported } from '../services/webAuthn';
 import { exportBackupToFile, restoreBackupFromFile, syncToGitHubGist, pullFromGitHubGist } from '../services/sync';
 import { clearAllFinancialData } from '../services/seedData';
 
@@ -64,6 +65,23 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, onDa
     await saveSettings(updated);
     onUpdateSettings(updated);
     showStatus('General settings saved!');
+  };
+
+  const handleRegisterPasskey = async () => {
+    const res = await registerBiometricPasskey();
+    if (res.success && res.credentialId) {
+      const updated: UserSettings = {
+        ...settings,
+        isSecurityEnabled: true,
+        passkeyCredentialId: res.credentialId
+      };
+      await saveSettings(updated);
+      onUpdateSettings(updated);
+      setIsSecurityEnabled(true);
+      showStatus(res.message);
+    } else {
+      showStatus(res.message, true);
+    }
   };
 
   const handleToggleSecurity = async (e: React.FormEvent) => {
@@ -227,6 +245,18 @@ export const SettingsView: React.FC<Props> = ({ settings, onUpdateSettings, onDa
                   onChange={(e) => setNewPin(e.target.value)}
                 />
               </div>
+            )}
+
+            {isWebAuthnSupported() && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleRegisterPasskey}
+                style={{ width: '100%', justifyContent: 'center', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              >
+                <Key size={16} />
+                <span>{settings.passkeyCredentialId ? '✓ Fingerprint Passkey Registered (Click to Re-register)' : 'Register Fingerprint / Passkey'}</span>
+              </button>
             )}
 
             <button type="submit" className="btn-primary">
