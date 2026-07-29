@@ -156,7 +156,7 @@ export const AiFinancialManagerDashboardView: React.FC<Props> = ({ settings, onN
             <Flame size={18} color="#f43f5e" />
           </div>
           <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#fb7185', marginBottom: '4px' }}>
-            {inflationData ? `${inflationData.personalInflationPercent}%` : 'Calculating...'}
+            {inflationData ? `${Number(inflationData.personalInflationPercent).toFixed(1)}%` : 'Calculating...'}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Market CPI Baseline: {settings.marketCPIBenchmarkPercent}%</div>
         </div>
