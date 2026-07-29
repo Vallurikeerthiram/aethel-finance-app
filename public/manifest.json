@@ -1,0 +1,16 @@
+{
+  "short_name": "Aethel AI",
+  "name": "Aethel Personal Finance & Inflation AI",
+  "icons": [
+    {
+      "src": "logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0d0e15",
+  "theme_color": "#0d0e15",
+  "display": "standalone",
+  "orientation": "portrait"
+}
